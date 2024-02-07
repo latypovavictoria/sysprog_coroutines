@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+
 #include "libcoro.h"
 #include "sort.h"
 /**
@@ -50,11 +52,15 @@ other_function(const char *name, int depth)
  * Coroutine body. This code is executed by all the coroutines. Here you
  * implement your solution, sort each individual file.
  */
+
 static int
 coroutine_func_f(void *context)
 {
 	/* IMPLEMENT SORTING OF INDIVIDUAL FILES HERE. */
-
+	struct timespec start, end;
+	long long elapsedTime;
+	clock_gettime(CLOCK_MONOTONIC, &start);
+	
 	struct coro *this = coro_this();
 	struct my_context *ctx = context;
 	char *name = ctx->name;
@@ -77,6 +83,10 @@ coroutine_func_f(void *context)
 	       coro_switch_count(this));
 
 	my_context_delete(ctx);
+	
+	clock_gettime(CLOCK_MONOTONIC, &end);
+    	elapsedTime = (end.tv_sec - start.tv_sec) * 1000000LL + (end.tv_nsec - start.tv_nsec) / 1000;
+    	printf("Elapsed time: %lld mcs\n", elapsedTime);
 	/* This will be returned from coro_status(). */
 	return 0;
 }
@@ -84,9 +94,6 @@ coroutine_func_f(void *context)
 int
 main(int argc, char **argv)
 {
-	/* Delete these suppressions when start using the args. */
-	(void)argc;
-	(void)argv;
 	/* Initialize our coroutine global cooperative scheduler. */
 	coro_sched_init();
 	/* Start several coroutines. */
@@ -118,7 +125,30 @@ main(int argc, char **argv)
 	/* All coroutines have finished. */
 
 	/* IMPLEMENT MERGING OF THE SORTED ARRAYS HERE. */
+	
+    	FILE* target = fopen("result.txt", "w");
+    	if (target == NULL) {
+            printf("Error opening target file.\n");
+            return 1;
+    	}
 
+    	for (unsigned int i = 1; i < argc; i++) {
+             FILE* source = fopen(argv[i], "r");
+             if (source == NULL) {
+                 printf("Error opening source file %s.\n", argv[i]);
+                 continue;
+             }
+
+             int c;
+             while ((c = fgetc(source)) != EOF) {
+                 fputc(c, target);
+             }
+
+             fclose(source);
+        }
+
+        fclose(target);
+       
+       	get_array_from_file("result.txt");
 	return 0;
 }
-
