@@ -71,22 +71,19 @@ coroutine_func_f(void *context)
 	printf("Started coroutine %s\n", name);
 	printf("%s: switch count %lld\n", name, coro_switch_count(this));
 	printf("%s: yield\n", name);
+	
+	clock_gettime(CLOCK_MONOTONIC, &end);
+    	elapsedTime = (end.tv_sec - start.tv_sec) * 1000000LL + (end.tv_nsec - start.tv_nsec) / 1000;
+    	printf("Elapsed time: %lld mcs\n", elapsedTime);
+    	
 	coro_yield();
-
-	printf("%s: switch count %lld\n", name, coro_switch_count(this));
-	printf("%s: yield\n", name);
-	coro_yield();
-
-	printf("%s: switch count %lld\n", name, coro_switch_count(this));
+	
 	other_function(name, 1);
 	printf("%s: switch count after other function %lld\n", name,
 	       coro_switch_count(this));
 
 	my_context_delete(ctx);
 	
-	clock_gettime(CLOCK_MONOTONIC, &end);
-    	elapsedTime = (end.tv_sec - start.tv_sec) * 1000000LL + (end.tv_nsec - start.tv_nsec) / 1000;
-    	printf("Elapsed time: %lld mcs\n", elapsedTime);
 	/* This will be returned from coro_status(). */
 	return 0;
 }
@@ -125,6 +122,10 @@ main(int argc, char **argv)
 	/* All coroutines have finished. */
 
 	/* IMPLEMENT MERGING OF THE SORTED ARRAYS HERE. */
+    	struct timespec total_start, total_end;
+    	long long totalElapsedTime;
+    
+    	clock_gettime(CLOCK_MONOTONIC, &total_start);	
 	
     	FILE* target = fopen("result.txt", "w");
     	if (target == NULL) {
@@ -148,7 +149,11 @@ main(int argc, char **argv)
         }
 
         fclose(target);
-       
        	get_array_from_file("result.txt");
+       	
+       	clock_gettime(CLOCK_MONOTONIC, &total_end);
+       	totalElapsedTime = (total_end.tv_sec - total_start.tv_sec) * 1000000LL +(total_end.tv_nsec - total_start.tv_nsec) / 1000;
+    
+    	printf("Total elapsed time for the program: %lld mcs\n", totalElapsedTime);
 	return 0;
 }
