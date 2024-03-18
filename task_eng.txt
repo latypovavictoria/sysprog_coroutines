@@ -1,28 +1,54 @@
 ------------------------------------------------------------------
-Merge sort in coroutines.
+Shell.
 Language: С.
 Deadline: 2 weeks.
 ------------------------------------------------------------------
 
-Files are stored on the disk. They store integers in arbitrary
-order separated by whitespaces. Each file should be sorted, and
-then results should be merged into a new file. That is, merge sort
-should be implemented.
+You need to implement a simplified version of a command line
+console. It should take lines like this:
+
+    > command_name param1 param2 ...
+
+and execute them by calling 'command_name' with the given
+parameters. So be a terminal, basically.
 
 
 Rules:
 
-- Each file should be sorted in its own coroutine. This rule
-  targets your understanding of what cooperative multitasking is.
+- The program should correctly handle quoted strings even if there
+  are whitespaces inside it.
 
-- Files have ASCII encoding. I.e. they are plain text. Not unicode
-  or anything.
+- You need to handle comments (by trimming them).
 
-- For time measurements you should use
-  clock_gettime(CLOCK_MONOTONIC). Non-monotonic clocks (such as
-  time(), gettimeofday(), CLOCK_REALTIME, etc) can go backwards
-  sometimes, screwing the time measurements. clock() is monotonic,
-  but doesn't account time spent in blocking syscalls.
+- The console should support pipes expressed as symbol '|' and
+  output redirection using '>' and '>>'.
+
+- The program should print all the same what would be printed by a
+  real terminal like /bin/bash.
+
+- You need to use functions pipe(), dup/dup2(), fork(), wait(),
+  open(), close(), at least one of execl/execle/execlp/execv/execvp/
+  execvP().
+
+- The 'cd' command you need to implement yourself, not via 'exec'
+  functions. Because it changes the current working directory of
+  the terminal itself. Luckily, it is easy to do with the C
+  function 'chdir()'.
+
+- The 'exit' command is also special, like 'cd'. Because it
+  concerns the terminal itself. It needs to be implemented
+  manually. But keep in mind that it should exit from the terminal
+  itself only if it is alone in the line. 'exit' - terminate the
+  shell. 'exit | echo 100' - do not terminate, execute it via
+  'exec' like any other command.
+
+- Your console should support tokens written without spaces when
+  /bin/bash is able to parse them too. Like this:
+  'echo "4">file' (works same as 'echo "4" > file'), or
+  'echo 100|grep 100' (works same as 'echo 100 | grep 100').
+
+- When something is unclear how it should work, you should test it
+  in the real console like /bin/bash and repeat the behaviour.
 
 - The code should be built successfully with these compiler flags:
   `-Wextra -Werror -Wall -Wno-gnu-folding-constant`.
@@ -37,120 +63,92 @@ Restrictions:
   utils/heap_help tool. Showing zero leak reports from Valgrind or
   ASAN is not enough - they often miss the leaks.
 
-- Sorting should be implemented by you without built-in functions
-  like qsort(), system("sort ...") etc.
+- Length of command line input is not limited, so you can't read
+  it into a buffer of a fixed size. But each line obviously fits
+  into the main memory.
 
-- Sorting complexity of the individual files should be < O(N^2)
-  (for example, you can't use bubble sort). Given that
-  restriction, you can choose any sorting algorithm such as
-  "quick sort".
-
-- Total execution time is limited. But since the students have
-  different hardware, the limit is for my own PC. With 2.5GHz
-  CPU and an SSD sorting of 6 files each having 40k numbers
-  shouldn't take longer than a second. Normally it should even
-  take 100-200 ms, but 1 second will do as well.
-
-- Work with files should be done
-
-  - either via a numeric file descriptor using open() / read() /
-    write() / close() functions,
-
-  - or via FILE* and functions fopen() / fscanf() / fprintf() /
-    fclose(). It is not allowed to use std::iostream,
-    std::ostream, std::istream and other STL helpers.
+- It is forbidden to use functions like system(), popen() or use
+  any other way to access existing terminal-like ready-to-use
+  functions.
 
 
 Relaxations:
 
-- Numbers fit into 'int' type.
+- You don't need to support redirect of specific output streams,
+  like stderr. These commands: 1>, 2>, $>, 1>>, and alike are not
+  needed. (Usual > and >> still are needed.)
 
-- You can assume, that all the files fit into the main memory,
-  even together.
+- No need to support multiple redirects like
+  'cmd > file1 > file2' or 'cmd > file1 file2'.
 
-- The final step - merging of the sorted files - can be done right
-  in main() without any coroutines.
+- You don't need to support '~' nor '-' paths in 'cd' command.
+
+- You can use an already existing parser defined in parser.h and .c files, with
+  usage shown in solution.c.
 
 
-Advices:
+Input examples:
 
-- You can find more info about various unknown functions using
-  'man' command line utility. For example, 'man read' (or
-  'man 2 read') prints manual for 'read()' function. 'man strdup'
-  can tell more about 'strdup()' function. Similar for other
-  built-in functions.
+* Print process list and find 'init' string in them:
 
-- Steps which you can follow if don't know where to start:
+    > ps aux | grep init
 
-  - Implement normal sorting of one file. No coroutines or
-    multiple files. Just read and sort a single file. Test this
-    code.
+* Execute code in python and search a string in its output:
 
-  - Extend your code to sort multiple files and do the merge
-    sort, also without coroutines. Check it on the real tests.
-    This will allow to concentrate on adding coroutines, and not
-    to waste time on debugging both coroutines and sorting at the
-    same time.
+    > echo "print('result is ', 123 + 456)" | python -i | grep result
 
-  - Start using coroutines.
+* Print escaped quote into a file and print it:
 
+    > echo "some text\" with quote" > test.txt
+    > cat test.txt
+
+* Append to a file:
+
+    > echo "first data" > test.txt
+    > echo "second" >> test.txt
+    > cat test.txt
+
+* Start an interactive python console and do something in it:
+
+    > python
+    >>> print(1 + 2)
+    >>> 3
 
 Possible solutions:
 
-The coroutines should switch between each other. Do the so called
-'yield's. These are coro_yield() in the solution.c file. There are
-several options how you use them:
+  - 15 points: all described above.
 
-- 15 points: yield after each iteration in your individual files
-  sorting loops.
+  - +5 points: support operators && and ||.
 
-- +5 points: each of N coroutines is given T / N microseconds,
-  where T - target latency given as a command line parameter.
-  After each sorting loop iteration you yield only if the current
-  coroutine's time quantum is over.
+  - +5 points: support &.
 
-- +5 points: allow to specify the number of coroutines. Each
-  coroutine should work as follows: if there are unsorted files,
-  then pick one and sort it, then repeat. If there are no unsorted
-  files, then the coroutine exits. For example, assume there are
-  10 files given and 3 coroutines. They pick 1 file each, 7 files
-  are waiting. One coroutine finishes the sorting, picks up a next
-  file (6 are waiting). Another coroutine finishes some other
-  and picks up the next one (5 files remaining). And so on until
-  all files are sorted. Then you do the normal merge sort. This
-  bonus task basically offers you do implement a coroutine pool.
-
-- -5 points: (yes, minus, not plus) - you can use C++ and STL
-  containers. Including std::iostream/ostream/etc. But you still
-  can't use std::sort().
+  - -5 points: (yes, minus, not plus) - you can use C++ and STL
+  containers.
 
 The additional options for +5 points do not include each other.
 That is, you can do none, or do only one, or do only another, or
 both for +10. Or use C++ and get -5 to your sum.
 
-Input: names of files to sort via the command line arguments. If
-you do the bonus tasks, then you also get the target latency in
-microseconds (if you do that bonus) and the coroutine count (if
-you do that bonus) before the file names.
+Input: commands and their arguments, input/output redirection operators.
 
-Output: total work time, work time and number of context switches
-for each individual coroutine. Keep in mind that the coroutine
-work time doesn't include its wait time, i.e. while it was
-sleeping during the coro_yield(). So you should stop coroutine
-timer before each coro_yield() and start it again right after.
+Output: the same what a real terminal prints.
 
-For testing you can create your files or generate them using
-generator.py script. An example, which should work for 15 points
-solution:
+Where to begin? The recommended implementation plan is below:
 
-$> python3 generator.py -f test1.txt -c 10000 -m 10000
-$> python3 generator.py -f test2.txt -c 10000 -m 10000
-$> python3 generator.py -f test3.txt -c 10000 -m 10000
-$> python3 generator.py -f test4.txt -c 10000 -m 10000
-$> python3 generator.py -f test5.txt -c 10000 -m 10000
-$> python3 generator.py -f test6.txt -c 100000 -m 10000
+- Get familiar with the parser API.
 
-$> ./main test1.txt test2.txt test3.txt test4.txt test5.txt test6.txt
+- Implement command execution without |, >, >>. Just one command.
 
-For checking the result you can use the script checker.py. All
-scripts assume working in python 3.
+- Add support for |, >, >>. To get started with pipes it might make sense to
+  try and make it work with just a single pipe at first. Can try to do that in a
+  separate source file where you would hardcode 2 commands with a pipe. For
+  example, 'echo 100' and 'grep 100'. Try to make them work via a pipe, outside
+  of the main solution. Once it works, try to make it 3 commands. Once it also
+  works, you will see the pattern and will be able to extend it to N commands.
+
+Architecture of the solution may be the following: there is a process-terminal,
+which reads user commands. On each command it does fork(). The new child
+executes the command using exec*() functions. The parent process waits for the
+child termination. For | the terminal opens a pipe, which is used to link
+input of one child and output of another. For > and >> the terminal opens a
+file, and using dup/dup2() changes standard output for a child.

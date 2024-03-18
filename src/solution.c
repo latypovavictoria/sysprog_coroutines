@@ -1,159 +1,121 @@
+#include "parser.h"
+
+#include <assert.h>
 #include <stdio.h>
+#include <unistd.h>
+
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
+#include <unistd.h>
+#include <sys/wait.h>
+#include <fcntl.h>
 
-#include "libcoro.h"
-#include "sort.h"
-/**
- * You can compile and run this code using the commands:
- *
- * $> gcc solution.c libcoro.c
- * $> ./a.out
- */
+#define MAX_ARGS 100
+#define MAX_COMMANDS 100
+#define MAX_TOKEN_LEN 100
 
-struct my_context {
-	char *name;
-    	char* filename;
-};
-
-static struct my_context *
-my_context_new(const char *name, const char *filename)
-{
-	struct my_context *ctx = malloc(sizeof(*ctx));
-	ctx->name = strdup(name);
-	ctx->filename = strdup(filename);
-	return ctx;
-}
 
 static void
-my_context_delete(struct my_context *ctx)
+execute_command_line(const struct command_line *line)
 {
-	free(ctx->name);
-	free(ctx->filename);
-	free(ctx);
-}
+	/* REPLACE THIS CODE WITH ACTUAL COMMAND EXECUTION */
 
-/**
- * A function, called from inside of coroutines recursively. Just to demonstrate
- * the example. You can split your code into multiple functions, that usually
- * helps to keep the individual code blocks simple.
- */
-static void
-other_function(const char *name, int depth)
-{
-	printf("%s: entered function, depth = %d\n", name, depth);
-	coro_yield();
-	if (depth < 3)
-		other_function(name, depth + 1);
-}
-
-/**
- * Coroutine body. This code is executed by all the coroutines. Here you
- * implement your solution, sort each individual file.
- */
-
-static int
-coroutine_func_f(void *context)
-{
-	/* IMPLEMENT SORTING OF INDIVIDUAL FILES HERE. */
-	struct timespec start, end;
-	long long elapsedTime;
-	clock_gettime(CLOCK_MONOTONIC, &start);
-	
-	struct coro *this = coro_this();
-	struct my_context *ctx = context;
-	char *name = ctx->name;
-    	char* filename = ctx->filename;
-    	
-    	get_array_from_file(filename);
-	
-	printf("Started coroutine %s\n", name);
-	printf("%s: switch count %lld\n", name, coro_switch_count(this));
-	printf("%s: yield\n", name);
-	
-	clock_gettime(CLOCK_MONOTONIC, &end);
-    	elapsedTime = (end.tv_sec - start.tv_sec) * 1000000LL + (end.tv_nsec - start.tv_nsec) / 1000;
-    	printf("Elapsed time: %lld mcs\n", elapsedTime);
-    	
-	coro_yield();
-	
-	other_function(name, 1);
-	printf("%s: switch count after other function %lld\n", name,
-	       coro_switch_count(this));
-
-	my_context_delete(ctx);
-	
-	/* This will be returned from coro_status(). */
-	return 0;
+	assert(line != NULL);
+	printf("================================\n");
+	printf("Command line:\n");
+	printf("Is background: %d\n", (int)line->is_background);
+	printf("Output: ");
+	if (line->out_type == OUTPUT_TYPE_STDOUT) {
+		printf("stdout\n");
+	} else if (line->out_type == OUTPUT_TYPE_FILE_NEW) {
+		printf("new file - \"%s\"\n", line->out_file);
+	} else if (line->out_type == OUTPUT_TYPE_FILE_APPEND) {
+		printf("append file - \"%s\"\n", line->out_file);
+	} else {
+		assert(false);
+	}
+	printf("Expressions:\n");
+	const struct expr *e = line->head;
+	while (e != NULL) {
+		if (e->type == EXPR_TYPE_COMMAND) {
+			printf("\tCommand: %s", e->cmd.exe);
+			for (uint32_t i = 0; i < e->cmd.arg_count; ++i) {
+				printf(" %s", e->cmd.args[i]);
+			}
+			execvp(e->cmd.args);
+			execvp(e->cmd.exe);
+			printf("\n");
+		} else if (e->type == EXPR_TYPE_PIPE) {
+			printf("\tPIPE\n");
+			
+			int *pipes = (int*)malloc(2 * sizeof(int));
+			int prev_pipe = 0;
+			
+			for (uint32_t i = 0; i < e->cmd.arg_count; ++i) {
+				pipe(pipes);
+				if (!fork()) {
+				    dup2(prev_pipe, 0);
+				    
+				    if (i != e->cmd.arg_count - 1) {
+				        dup2(pipes[1], 1);
+				    }
+				    close(pipes[0]);
+				    
+				    if (strcmp(e->cmd.args[i], "cd") == 0) {
+        				chdir(e->cmd.args[i + 1]);
+        			    } 
+        			    else if (strcmp(e->cmd.args[i], "exit") == 0) {
+        				      if (i == 1) {
+        				      	  free(pipes);
+            					  exit(0);
+            				      }
+    				    } 
+    				    else {
+        				execvp(e->cmd.args[0], e->cmd.args);
+    				    }	
+				}
+				else {
+                			wait(NULL);
+                			close(pipes[1]);
+                			prev_pipe = pipes[0];
+            			}
+			}
+			free(pipes);
+		
+		} else if (e->type == EXPR_TYPE_AND) {
+			printf("\tAND\n");
+		} else if (e->type == EXPR_TYPE_OR) {
+			printf("\tOR\n");
+		} else {
+			assert(false);
+		}
+		e = e->next;
+	}
 }
 
 int
-main(int argc, char **argv)
+main(void)
 {
-	/* Initialize our coroutine global cooperative scheduler. */
-	coro_sched_init();
-	/* Start several coroutines. */
-	for (int i = 1; i < argc; ++i) {
-		/*
-		 * The coroutines can take any 'void *' interpretation of which
-		 * depends on what you want. Here as an example I give them
-		 * some names.
-		 */
-		char name[16];
-		sprintf(name, "coro_%d", i);
-		/*
-		 * I have to copy the name. Otherwise all the coroutines would
-		 * have the same name when they finally start.
-		 */
-		coro_new(coroutine_func_f, my_context_new(name, argv[i]));
+	const size_t buf_size = 1024;
+	char buf[buf_size];
+	int rc;
+	struct parser *p = parser_new();
+	while ((rc = read(STDIN_FILENO, buf, buf_size)) > 0) {
+		parser_feed(p, buf, rc);
+		struct command_line *line = NULL;
+		while (true) {
+			enum parser_error err = parser_pop_next(p, &line);
+			if (err == PARSER_ERR_NONE && line == NULL)
+				break;
+			if (err != PARSER_ERR_NONE) {
+				printf("Error: %d\n", (int)err);
+				continue;
+			}
+			execute_command_line(line);
+			printf("TESTTESTTESY\n");
+			command_line_delete(line);
+		}
 	}
-	/* Wait for all the coroutines to end. */
-	struct coro *c;
-	while ((c = coro_sched_wait()) != NULL) {
-		/*
-		 * Each 'wait' returns a finished coroutine with which you can
-		 * do anything you want. Like check its exit status, for
-		 * example. Don't forget to free the coroutine afterwards.
-		 */
-		printf("Finished %d\n", coro_status(c));
-		coro_delete(c);
-	}
-	/* All coroutines have finished. */
-
-	/* IMPLEMENT MERGING OF THE SORTED ARRAYS HERE. */
-    	struct timespec total_start, total_end;
-    	long long totalElapsedTime;
-    
-    	clock_gettime(CLOCK_MONOTONIC, &total_start);	
-	
-    	FILE* target = fopen("result.txt", "w");
-    	if (target == NULL) {
-            printf("Error opening target file.\n");
-            return 1;
-    	}
-
-    	for (unsigned int i = 1; i < argc; i++) {
-             FILE* source = fopen(argv[i], "r");
-             if (source == NULL) {
-                 printf("Error opening source file %s.\n", argv[i]);
-                 continue;
-             }
-
-             int c;
-             while ((c = fgetc(source)) != EOF) {
-                 fputc(c, target);
-             }
-
-             fclose(source);
-        }
-
-        fclose(target);
-       	get_array_from_file("result.txt");
-       	
-       	clock_gettime(CLOCK_MONOTONIC, &total_end);
-       	totalElapsedTime = (total_end.tv_sec - total_start.tv_sec) * 1000000LL +(total_end.tv_nsec - total_start.tv_nsec) / 1000;
-    
-    	printf("Total elapsed time for the program: %lld mcs\n", totalElapsedTime);
+	parser_delete(p);
 	return 0;
 }
