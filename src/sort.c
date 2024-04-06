@@ -10,7 +10,7 @@ void get_array_from_file(const char* filename) {
         return;
     }
     
-    int* array = (int*)malloc(sizeof(int));;
+    int* array = NULL;
     int count = 0;
     int number = 0;
     while (fscanf(file, "%d", &number) == 1) {
@@ -23,12 +23,12 @@ void get_array_from_file(const char* filename) {
     
     file = fopen(filename, "w");
     for(unsigned int i = 0; i < count; i++) {
-    	fprintf(file, "%d ", array[i]);
+     fprintf(file, "%d ", array[i]);
     }
     fclose(file);
     
+    free(array);
 }
-
 
 void merge_sort(int* array, int left, int right) {
     if (left == right) {

@@ -94,6 +94,11 @@ main(int argc, char **argv)
 	/* Initialize our coroutine global cooperative scheduler. */
 	coro_sched_init();
 	/* Start several coroutines. */
+	
+    	struct timespec total_start, total_end;
+    	long long totalElapsedTime;
+	clock_gettime(CLOCK_MONOTONIC, &total_start);
+	
 	for (int i = 1; i < argc; ++i) {
 		/*
 		 * The coroutines can take any 'void *' interpretation of which
@@ -120,12 +125,8 @@ main(int argc, char **argv)
 		coro_delete(c);
 	}
 	/* All coroutines have finished. */
-
+	
 	/* IMPLEMENT MERGING OF THE SORTED ARRAYS HERE. */
-    	struct timespec total_start, total_end;
-    	long long totalElapsedTime;
-    
-    	clock_gettime(CLOCK_MONOTONIC, &total_start);	
 	
     	FILE* target = fopen("result.txt", "w");
     	if (target == NULL) {
@@ -151,9 +152,9 @@ main(int argc, char **argv)
         fclose(target);
        	get_array_from_file("result.txt");
        	
-       	clock_gettime(CLOCK_MONOTONIC, &total_end);
-       	totalElapsedTime = (total_end.tv_sec - total_start.tv_sec) * 1000000LL +(total_end.tv_nsec - total_start.tv_nsec) / 1000;
-    
-    	printf("Total elapsed time for the program: %lld mcs\n", totalElapsedTime);
+	clock_gettime(CLOCK_MONOTONIC, &total_end);
+
+        totalElapsedTime = (total_end.tv_sec - total_start.tv_sec) * 1000000LL + (total_end.tv_nsec - total_start.tv_nsec) / 1000;
+        printf("Total Elapsed time: %lld mcs\n", totalElapsedTime);
 	return 0;
 }
