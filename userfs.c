@@ -1,7 +1,11 @@
 #include "userfs.h"
 #include <stddef.h>
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
+
+#include "userfs.h"
+#include <stddef.h>
 
 enum {
 	BLOCK_SIZE = 512,
@@ -110,6 +114,16 @@ ufs_open(const char* filename, int flags)
 		last_file->next = new_file;
 		new_file->prev = last_file;
 	}
+	for (int i = 0; i < file_descriptor_capacity; ++i) {
+		if (file_descriptors[i] == NULL) {
+			struct filedesc *fd = malloc(sizeof(struct filedesc));
+			file_descriptors[i] = fd;
+			file_descriptor_count++;
+			fd->file = new_file;
+			new_file->refs++;
+		}
+	}
+	
 	return new_file->refs;
 }
 
@@ -164,7 +178,7 @@ ufs_read(int fd, char* buf, size_t size)
 	while (current_block != NULL && bytes_read < size) {
 		size_t bytes_to_read = size - bytes_read;
 
-		if ((size_t)bytes_to_read > current_block->occupied) {
+		if (bytes_to_read > (size_t)current_block->occupied) {
 			bytes_to_read = current_block->occupied;
 		}
 		memcpy(buf + bytes_read, current_block->memory, bytes_to_read);
