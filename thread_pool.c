@@ -5,6 +5,8 @@
 
 struct thread_task {
 	pthread_t thread_id;
+	pthread_mutex_t mutex;
+	pthread_cond_t cond;
 	thread_task_f function;
 	void *arg;
 	bool is_finished;
@@ -16,6 +18,7 @@ struct thread_task {
 struct thread_pool {
 	pthread_t* threads;
 	int thread_count;
+	int active_thread_count;
 	bool shutdown;
 	pthread_mutex_t mutex;
 	pthread_cond_t cond;
@@ -41,6 +44,7 @@ thread_pool_new(int max_thread_count, struct thread_pool** pool) {
     }
 
     (*pool)->thread_count = max_thread_count;
+    (*pool)->active_thread_count = 0; // инициализация поля active_thread_count
     (*pool)->shutdown = false;
     pthread_mutex_init(&((*pool)->mutex), NULL);
     pthread_cond_init(&((*pool)->cond), NULL);
@@ -64,7 +68,7 @@ thread_pool_thread_count(const struct thread_pool *pool)
 		return 0;
 	}
 	else {
-		return pool->thread_count;
+		return pool->active_thread_count;
 	}
 }
 
@@ -110,25 +114,25 @@ thread_pool_push_task(struct thread_pool *pool, struct thread_task *task)
 	pool->tasks[pool->task_count++] = task;
 	pthread_mutex_unlock(&pool->mutex);
 	pthread_cond_signal(&pool->cond);
-
+	task->is_running = true;
 	return 0;
 }
 
 int
 thread_task_new(struct thread_task **task, thread_task_f function, void *arg)
 {
-	*task = (struct thread_task*)malloc(sizeof(struct thread_task));
-	if (*task == NULL) {
-		return TPOOL_ERR_INVALID_ARGUMENT;
-	}
+    *task = (struct thread_task*)malloc(sizeof(struct thread_task));
+    if (*task == NULL) {
+        return TPOOL_ERR_INVALID_ARGUMENT;
+    }
 
-	(*task)->function = function;
-	(*task)->arg = arg;
-	(*task)->thread_id++;
-	(*task)->is_finished = false;
-	(*task)->is_running = true;
+    (*task)->function = function;
+    (*task)->arg = arg;
+    (*task)->is_finished = false;
+    (*task)->is_running = false;
+    (*task)->thread_id = 0;  // Инициализация поля thread_id
 
-	return 0;
+    return 0;
 }
 
 bool
@@ -140,7 +144,6 @@ thread_task_is_finished(const struct thread_task *task)
 
 	return task->is_finished;
 }
-
 
 bool
 thread_task_is_running(const struct thread_task *task)
@@ -155,17 +158,17 @@ thread_task_is_running(const struct thread_task *task)
 int
 thread_task_join(struct thread_task *task, void **result)
 {
-	if (task == NULL || result == NULL) {
-		return -1;
-	}
+    if (!task->is_running) {
+        return TPOOL_ERR_TASK_NOT_PUSHED;
+    }
 
-	if (pthread_join(task->thread_id, result) != 0) {
-		return -1;
-	}
+    if (pthread_join(task->thread_id, result) != 0){
+     return -1;
+    }
+    task->is_running = false;
 
-	return 0;
+    return 0;
 }
-
 #ifdef NEED_TIMED_JOIN
 
 int
@@ -206,14 +209,17 @@ thread_task_timed_join(struct thread_task *task, double timeout, void **result)
 #endif
 
 int
-thread_task_delete(struct thread_task *task)
-{
-	if (task->is_running) {
-		return TPOOL_ERR_TASK_IN_POOL;
-	}
+thread_task_delete(struct thread_task *task) {
+    if (task == NULL) {
+        return TPOOL_ERR_INVALID_ARGUMENT;
+    }
 
-	free(task);
-	return 0;
+    if (task->is_running) {
+        return TPOOL_ERR_TASK_IN_POOL;
+    }
+
+    free(task);
+    return 0;
 }
 
 #ifdef NEED_DETACH
