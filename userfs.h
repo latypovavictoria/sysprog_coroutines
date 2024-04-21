@@ -27,6 +27,11 @@
 /**
  * Flags for ufs_open call.
  */
+ 
+#define NEED_OPEN_FLAGS
+
+#define NEED_RESIZE
+
 enum open_flags {
 	/**
 	 * If the flag specified and a file does not exist -
