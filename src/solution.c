@@ -4,7 +4,6 @@
 #include <time.h>
 
 #include "libcoro.h"
-#include "sort.h"
 /**
  * You can compile and run this code using the commands:
  *
@@ -15,6 +14,13 @@
 struct my_context {
 	char *name;
     	char* filename;
+    	int second_start;
+    	int second_finish;
+    	int nano_second_start;
+    	int nano_second_finish;
+    	int second_all;
+	int nano_second_all;
+    	
 };
 
 static struct my_context *
@@ -39,48 +45,189 @@ my_context_delete(struct my_context *ctx)
  * the example. You can split your code into multiple functions, that usually
  * helps to keep the individual code blocks simple.
  */
-static void
-other_function(const char *name, int depth)
-{
-	printf("%s: entered function, depth = %d\n", name, depth);
-	coro_yield();
-	if (depth < 3)
-		other_function(name, depth + 1);
-}
 
 /**
  * Coroutine body. This code is executed by all the coroutines. Here you
  * implement your solution, sort each individual file.
  */
 
+void 
+start_timer_count(struct my_context *ctx) 
+{
+	struct timespec time;
+	clock_gettime(CLOCK_MONOTONIC, &time);
+	ctx->second_start = time.tv_sec;
+	ctx->nano_second_start = time.tv_nsec;
+}
+
+void 
+stop_timer_count(struct my_context *ctx) 
+{
+	struct timespec time;
+	clock_gettime(CLOCK_MONOTONIC, &time);
+	ctx->second_finish = time.tv_sec;
+	ctx->nano_second_finish = time.tv_nsec;
+}
+
+void 
+count_time(struct my_context *ctx) 
+{
+	ctx->second_all += ctx->second_finish - ctx->second_start;
+	if (ctx->nano_second_finish - ctx->nano_second_start < 0) {
+		ctx->nano_second_all += 1000000000 + ctx->nano_second_finish - ctx->nano_second_start;
+		ctx->second_all--;
+	} 
+	else {
+		ctx->nano_second_all += ctx->nano_second_finish - ctx->nano_second_start;
+	}
+}
+
+void merge_sort(int* array, int left, int right, struct my_context *ctx) {
+    if (left == right) {
+        return;
+    }
+
+    else {
+        int middle = (left + right) / 2;
+        merge_sort(array, left, middle, ctx);
+        merge_sort(array, middle + 1, right, ctx);
+        
+        unsigned int l_bound = left;
+        unsigned int r_bound = middle + 1;
+        int* temp = (int*)malloc(sizeof(int) * (right - left + 1));
+        for (unsigned int step = 0; step < right - left + 1; step++) {
+
+            if ((r_bound > right) || ((l_bound <= middle) && (array[l_bound] < array[r_bound]))) {
+                temp[step] = array[l_bound];
+                l_bound++;
+            }
+
+            else {
+                temp[step] = array[r_bound];
+                r_bound++;
+            }
+        }
+
+        for (unsigned int step = 0; step < right - left + 1; step++) {
+            array[left + step] = temp[step];
+        }
+        free(temp);
+        
+        stop_timer_count(ctx);
+	count_time(ctx);
+	coro_yield();
+	start_timer_count(ctx);
+    }
+}
+
+void get_array_from_file(const char* filename, struct my_context *ctx) {
+    FILE* file = fopen(filename, "r");
+    if (file == NULL) {
+        printf("Error opening file.\n");
+        return;
+    }
+    
+    int* array = NULL;
+    int count = 0;
+    int number = 0;
+    while (fscanf(file, "%d", &number) == 1) {
+        array = (int*)realloc(array, (count + 1) * sizeof(int));
+        array[count++] = number;
+    }
+    fclose(file);
+   
+    merge_sort(array, 0, count - 1, ctx);
+    
+    file = fopen(filename, "w");
+    for(unsigned int i = 0; i < count; i++) {
+     fprintf(file, "%d ", array[i]);
+    }
+    fclose(file);
+    
+    free(array);
+}
+
+void merge_sort_finish(int* array, int left, int right) {
+    if (left == right) {
+        return;
+    }
+
+    else {
+        int middle = (left + right) / 2;
+        merge_sort_finish(array, left, middle);
+        merge_sort_finish(array, middle + 1, right);
+        
+        unsigned int l_bound = left;
+        unsigned int r_bound = middle + 1;
+        int* temp = (int*)malloc(sizeof(int) * (right - left + 1));
+        for (unsigned int step = 0; step < right - left + 1; step++) {
+
+            if ((r_bound > right) || ((l_bound <= middle) && (array[l_bound] < array[r_bound]))) {
+                temp[step] = array[l_bound];
+                l_bound++;
+            }
+
+            else {
+                temp[step] = array[r_bound];
+                r_bound++;
+            }
+        }
+
+        for (unsigned int step = 0; step < right - left + 1; step++) {
+            array[left + step] = temp[step];
+        }
+        free(temp);
+    }
+}
+
+void get_array_from_file_finish(const char* filename) {
+    FILE* file = fopen(filename, "r");
+    if (file == NULL) {
+        printf("Error opening file.\n");
+        return;
+    }
+    
+    int* array = NULL;
+    int count = 0;
+    int number = 0;
+    while (fscanf(file, "%d", &number) == 1) {
+        array = (int*)realloc(array, (count + 1) * sizeof(int));
+        array[count++] = number;
+    }
+    fclose(file);
+   
+    merge_sort_finish(array, 0, count - 1);
+    
+    file = fopen(filename, "w");
+    for(unsigned int i = 0; i < count; i++) {
+     fprintf(file, "%d ", array[i]);
+    }
+    fclose(file);
+    
+    free(array);
+}
+
 static int
 coroutine_func_f(void *context)
 {
 	/* IMPLEMENT SORTING OF INDIVIDUAL FILES HERE. */
-	struct timespec start, end;
-	long long elapsedTime;
-	clock_gettime(CLOCK_MONOTONIC, &start);
-	
 	struct coro *this = coro_this();
 	struct my_context *ctx = context;
 	char *name = ctx->name;
     	char* filename = ctx->filename;
     	
-    	get_array_from_file(filename);
-	
-	printf("Started coroutine %s\n", name);
-	printf("%s: switch count %lld\n", name, coro_switch_count(this));
-	printf("%s: yield\n", name);
-	
-	clock_gettime(CLOCK_MONOTONIC, &end);
-    	elapsedTime = (end.tv_sec - start.tv_sec) * 1000000LL + (end.tv_nsec - start.tv_nsec) / 1000;
-    	printf("Elapsed time: %lld mcs\n", elapsedTime);
+    	start_timer_count(ctx);
     	
-	coro_yield();
+    	get_array_from_file(filename, ctx);
 	
-	other_function(name, 1);
-	printf("%s: switch count after other function %lld\n", name,
-	       coro_switch_count(this));
+	stop_timer_count(ctx);
+	count_time(ctx);
+
+	printf("coroutine name is: %s \n %lld\ntime %d usec\n\n",
+	 	ctx->name,
+	    	coro_switch_count(this),
+		ctx->second_all * 1000000 + ctx->nano_second_all / 1000
+	);
 
 	my_context_delete(ctx);
 	
@@ -150,7 +297,7 @@ main(int argc, char **argv)
         }
 
         fclose(target);
-       	get_array_from_file("result.txt");
+       	get_array_from_file_finish("result.txt");
        	
 	clock_gettime(CLOCK_MONOTONIC, &total_end);
 
